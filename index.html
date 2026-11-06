@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Heart of Rays">
+<meta property="og:description" content="320 rays, ten strokes each.">
+<title>Heart of Rays</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* layout: a fixed stage (960×720 landscape, 720×1280 portrait) scaled to fit; heart left/top, editor window right/bottom */
+:root {
+  --ink: #000;
+  --panel: #1f1f1f;
+  --text: #e6e6e6;
+  --lnum: #8a8a8a;
+  --kw: #e88ad6;
+  --mod: #82d2f0;
+  --call: #efe3a6;
+  --str: #f4a77e;
+  --num: #b7e2a0;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; background: var(--ink); }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
+body { overflow: hidden; }
+.shell { height: 100%; display: grid; place-items: center; }
+.fit { position: relative; overflow: hidden; }
+.stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--ink); cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.stage:focus-visible { outline: 2px solid #e88ad6; outline-offset: -2px; }
+canvas { position: absolute; left: 0; top: 0; }
+.win {
+  position: absolute; background: var(--panel); border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  font-family: var(--mono); color: var(--text);
+}
+.win .bar { height: 34px; display: flex; justify-content: flex-end; align-items: center; gap: 14px; padding: 0 16px; color: #7c7c7c; }
+.win .bar svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.4; }
+.code { padding: 6px 24px 22px 18px; }
+.l { display: grid; grid-template-columns: 2.1em 1fr; column-gap: .55em; }
+.l .n { text-align: right; color: var(--lnum); }
+.l .c { white-space: pre-wrap; overflow-wrap: anywhere; }
+.k { color: var(--kw); } .m { color: var(--mod); } .f { color: var(--call); } .s { color: var(--str); } .d { color: var(--num); }
+
+/* landscape stage 960×720 — mirrors the original framing */
+.stage.land { width: 960px; height: 720px; }
+.stage.land .win { left: 453px; top: 93px; width: 463px; }
+.stage.land .code { font-size: 15.5px; line-height: 15.5px; }
+/* portrait stage 720×1280 — heart on top, editor below */
+.stage.port { width: 720px; height: 1280px; }
+.stage.port .win { left: 36px; top: 612px; width: 648px; }
+.stage.port .code { font-size: 17.5px; line-height: 20.5px; padding-right: 18px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="fit" id="fit">
+    <div class="stage" id="stage" tabindex="0" role="button" aria-label="A heart drawn from 320 rays. Tap to draw it again.">
+      <canvas id="cv" aria-hidden="true"></canvas>
+      <div class="win" aria-hidden="true">
+        <div class="bar">
+          <svg viewBox="0 0 12 12"><path d="M1 6.5h10"/></svg>
+          <svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9"/></svg>
+          <svg viewBox="0 0 12 12"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9"/></svg>
+        </div>
+        <div class="code" id="code"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/plain" id="src">import turtle as t, math as m, random as r, time
+
+s = t.Screen(); s.bgcolor("black"); s.tracer(0); t.hideturtle()
+
+for i in range(320):
+    a = 2 * m.pi * i / 320
+    xo = 16 * (m.sin(a)**3) * 16
+    yo = (13*m.cos(a) - 5*m.cos(2*a) - 2*m.cos(3*a) - m.cos(4*a)) * 16
+    L = r.uniform(0.15, 0.5)
+    xi, yi = xo * (1 - L), yo * (1 - L)
+
+    for j in range(10):
+        f = j / 10
+        t.pencolor(1 - 0.6*f, 0.7 * (1-f), 0.8 * (1-f))
+        t.width(2)
+        t.penup(); t.goto(xo + (xi-xo)*f, yo + (yi-yo)*f)
+        t.pendown(); t.goto(xo + (xi-xo)*(f+0.1), yo + (yi-yo)*(f+0.1))
+        s.update()
+        time.sleep(0.02)
+
+t.done()</script>
+
+<script>
+(() => {
+  "use strict";
+  // ---------- editor ----------
+  const KW = new Set(["import", "as", "for", "in"]);
+  const MOD = new Set(["turtle", "t", "math", "m", "random", "r", "time", "s"]);
+  const esc = (x) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  function hl(line) {
+    return line.replace(/("[^"]*")|(\b\d+\.?\d*\b)|([A-Za-z_]\w*)(\s*\()?|([^"\w]+)/g, (all, str, num, id, paren, other) => {
+      if (str) return `<span class="s">${esc(str)}</span>`;
+      if (num) return `<span class="d">${num}</span>`;
+      if (id) {
+        const p = paren || "";
+        if (KW.has(id)) return `<span class="k">${id}</span>${p}`;
+        if (p) return `<span class="f">${id}</span>${p}`;
+        if (MOD.has(id)) return `<span class="m">${id}</span>`;
+        return id;
+      }
+      return esc(other);
+    });
+  }
+  const src = document.getElementById("src").textContent.split("\n");
+  document.getElementById("code").innerHTML = src.map((ln, i) =>
+    { const ind = ln.length - ln.trimStart().length + 2; return `<div class="l"><span class="n">${i + 1}</span><span class="c" style="padding-left:${ind}ch;text-indent:-${ind}ch">${ln ? hl(ln) : " "}</span></div>`; }).join("");
+
+  // ---------- rays (same maths as the turtle program) ----------
+  let seed = 1402;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const RAYS = [];
+  for (let i = 0; i < 320; i++) {
+    const a = 2 * Math.PI * i / 320;
+    const xo = 16 * Math.sin(a) ** 3 * 16;
+    const yo = (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) * 16;
+    const L = 0.15 + rand() * 0.35;
+    RAYS.push([xo, yo, xo * (1 - L), yo * (1 - L)]);
+  }
+  const SEGS = 3200, START = 0.4, DUR = 12.0;
+  const COLORS = [];
+  for (let j = 0; j < 10; j++) {
+    const f = j / 10;
+    COLORS.push(`rgb(${Math.round(255 * (1 - 0.6 * f))},${Math.round(255 * 0.7 * (1 - f))},${Math.round(255 * 0.8 * (1 - f))})`);
+  }
+
+  // ---------- stage + canvas ----------
+  const fitEl = document.getElementById("fit"), stage = document.getElementById("stage");
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  let mode = "", SW = 0, SH = 0, HS = 1, HX = 0, HY = 0, drawn = 0, pxScale = 1;
+
+  function layout() {
+    const shell = fitEl.parentElement;
+    const W = shell.clientWidth, H = shell.clientHeight;
+    const m = W / H < 0.95 ? "port" : "land";
+    if (m !== mode) {
+      mode = m;
+      stage.className = "stage " + m;
+      if (m === "land") { SW = 960; SH = 720; HS = 340 / 512; HX = 240; HY = 397; }
+      else { SW = 720; SH = 1280; HS = 520 / 512; HX = 360; HY = 318; }
+    }
+    const s = Math.min(W / SW, H / SH);
+    fitEl.style.width = SW * s + "px"; fitEl.style.height = SH * s + "px";
+    stage.style.transform = `scale(${s})`;
+    const cw = mode === "land" ? 480 : 720, ch = mode === "land" ? 720 : 600;
+    cv.style.width = cw + "px"; cv.style.height = ch + "px";
+    pxScale = s * Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(cw * pxScale); cv.height = Math.round(ch * pxScale);
+    const had = drawn; drawn = 0; paint(had);
+  }
+
+  const X = (x) => HX + x * HS;
+  const Y = (y) => HY - (y + 42.5) * HS;
+  function paint(upto) {
+    ctx.setTransform(pxScale, 0, 0, pxScale, 0, 0);
+    if (drawn === 0) { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height); }
+    ctx.lineWidth = 2 * HS;
+    ctx.lineCap = "butt";
+    for (let k = drawn; k < upto; k++) {
+      const [xo, yo, xi, yi] = RAYS[(k / 10) | 0], j = k % 10, f = j / 10;
+      ctx.strokeStyle = COLORS[j];
+      ctx.beginPath();
+      ctx.moveTo(X(xo + (xi - xo) * f), Y(yo + (yi - yo) * f));
+      ctx.lineTo(X(xo + (xi - xo) * (f + 0.1)), Y(yo + (yi - yo) * (f + 0.1)));
+      ctx.stroke();
+    }
+    drawn = Math.max(drawn, upto);
+  }
+
+  // ---------- clock ----------
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let t0 = performance.now(), running = false;
+  function tick(now) {
+    const t = (now - t0) / 1000;
+    const target = Math.max(0, Math.min(SEGS, Math.floor((t - START) / DUR * SEGS)));
+    if (target > drawn) paint(target);
+    if (drawn < SEGS) requestAnimationFrame(tick); else running = false;
+  }
+  function play() {
+    t0 = performance.now(); drawn = 0; paint(0);
+    if (!running) { running = true; requestAnimationFrame(tick); }
+  }
+  stage.addEventListener("click", play);
+  stage.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); play(); } });
+  addEventListener("resize", layout);
+
+  layout();
+  if (reduce) paint(SEGS); else play();
+})();
+</script>
+</body>
+</html>
